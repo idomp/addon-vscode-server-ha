@@ -121,13 +121,12 @@ RUN set -o errexit -o nounset -o pipefail \
     && if [ -d /opt/vscode-server-root/opt/vscode-server ]; then \
         cp -a /opt/vscode-server-root/opt/vscode-server /opt/vscode-server; \
     fi \
-    && if [ -x /opt/vscode-server-root/usr/bin/code ]; then \
-        cp /opt/vscode-server-root/usr/bin/code /usr/bin/code; \
-    fi \
+    # Ensure we always end up with /usr/local/bin/code \
     && if [ -x /opt/vscode-server-root/usr/local/bin/code ]; then \
         cp /opt/vscode-server-root/usr/local/bin/code /usr/local/bin/code; \
-    fi \
-    && if ! command -v code >/dev/null; then \
+    elif [ -x /opt/vscode-server-root/usr/bin/code ]; then \
+        cp /opt/vscode-server-root/usr/bin/code /usr/local/bin/code; \
+    else \
         code_candidate=$(find /opt/vscode-server-root -type f \( -name code -o -name start-vscode \) | head -n 1); \
         if [ -n "${code_candidate}" ]; then \
             cp "${code_candidate}" /usr/local/bin/code; \
