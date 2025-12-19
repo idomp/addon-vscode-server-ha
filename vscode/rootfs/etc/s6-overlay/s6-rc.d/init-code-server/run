@@ -1,13 +1,15 @@
 #!/command/with-contenv bashio
 # shellcheck shell=bash
 # ==============================================================================
-# Home Assistant Community Add-on: Studio Code Server
-# Sets up code-server.
+# Home Assistant Community Add-on: VS Code Server
+# Sets up VS Code Server.
 # ==============================================================================
 declare config_path
+declare default_settings
 
 # List of previous config hashes, to allow upgrade "default" configs.
 readonly -a PREVIOUS_DEFAULT_CONFIG_HASHES=(
+    4af003224345302a7f04cf40703554da5a1d8baba512dcb16cf50147f33cf06199f9ef1ddde5a2ecbc5e923ca02d1316ae62588aa9fc439a6cd994576a2b019d
     86776df88391c3d94f79f62b430f9ff8538960628d5e04fb660165a5a46640d2e74f89cd68b3e6985dc59101ae2dda00a1e25aa48381acfd4736858c5f23878b
     2be4c50575c05711d30121c3a1320698d3dbb034523c481be3aad3b638af3e0a46113d8c3f8cfc1b0f01e4cc10f32da3a30feca161c31b5b27177aeb7231bf70
     d4745002643a0168f65bc5b465a9baff59af0fb4783b50553e1a4e8b3f1a569fc4905df19b7743f7f313a5809a5128d997fc4b5e0a0e5db0a01f47b3b7bec39d
@@ -44,6 +46,11 @@ if ! bashio::fs.directory_exists '/data/vscode'; then
         || bashio::exit.nok "Could not create persistent storage folder."
 fi
 
+if ! bashio::fs.directory_exists '/data/vscode/server-data'; then
+    mkdir -p /data/vscode/server-data \
+        || bashio::exit.nok "Could not create VS Code Server data folder."
+fi
+
 # Clean up copies of extensions we deliver from the persistent storage
 while read -r ext; do
     extension="${ext%%#*}"
@@ -55,15 +62,37 @@ done < /root/vscode.extensions
 mkdir -p /data/vscode/extensions
 
 # Sets up default user settings on first start.
+default_settings="/root/.vscode-server/settings.json"
+
 if ! bashio::fs.file_exists '/data/vscode/User/settings.json'; then
     mkdir -p /data/vscode/User \
         || bashio::exit.nok "Could not create persistent storage folder."
 
-    cp /root/.code-server/settings.json /data/vscode/User/settings.json
+    cp "${default_settings}" /data/vscode/User/settings.json
 fi
 
 # Upgrade settings.json is still default from previous version.
 current=$(sha512sum /data/vscode/User/settings.json|cut -d " " -f 1)
 if [[ " ${PREVIOUS_DEFAULT_CONFIG_HASHES[*]} " == *" ${current} "* ]]; then
-    cp /root/.code-server/settings.json /data/vscode/User/settings.json
+    cp "${default_settings}" /data/vscode/User/settings.json
+fi
+
+if command -v code >/dev/null; then
+    while read -r ext; do
+        extension="${ext%%#*}"
+
+        if [[ -z "${extension}" ]]; then
+            continue
+        fi
+
+        bashio::log.info "Ensuring VS Code extension: ${extension}"
+        if ! code \
+            --user-data-dir "/data/vscode" \
+            --extensions-dir "/data/vscode/extensions" \
+            --install-extension "${extension}"; then
+            bashio::log.warning "Failed installing extension: ${extension}"
+        fi
+    done < /root/vscode.extensions
+else
+    bashio::log.warning "VS Code binary not found; skipping extension installation"
 fi

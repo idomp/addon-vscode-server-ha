@@ -1,13 +1,21 @@
 ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:9.1.0
+
+# Stage 1: VS Code Server image
+ARG VSCODE_SERVER_IMAGE="ahmadnassri/vscode-server"
+ARG VSCODE_SERVER_TAG="latest"
+FROM ${VSCODE_SERVER_IMAGE}:${VSCODE_SERVER_TAG} AS vscode-server
+
+ARG BUILD_FROM
 # hadolint ignore=DL3006
 FROM ${BUILD_FROM}
 
-# Confiure locale
+# Configure locale
 ENV \
     LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8 \
-    PIP_BREAK_SYSTEM_PACKAGES=1
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    VSCODE_SERVER_PORT=8000
 
 # Set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -18,9 +26,12 @@ COPY requirements.txt /tmp/requirements.txt
 # Copy in extensions list
 COPY vscode.extensions /root/vscode.extensions
 
+# Stage VS Code Server assets
+COPY --from=vscode-server /usr /opt/vscode-server-root/usr
+COPY --from=vscode-server /opt /opt/vscode-server-root/opt
+
 # Setup base system
 ARG BUILD_ARCH=amd64
-ARG CODE_SERVER_VERSION="v4.106.2"
 ARG HA_CLI_VERSION="4.42.0"
 # hadolint ignore=SC2181, DL3008
 RUN \
@@ -57,37 +68,6 @@ RUN \
     \
     && if [[ "${BUILD_ARCH}" = "aarch64" ]]; then ARCH="arm64"; fi \
     && if [[ "${BUILD_ARCH}" = "amd64" ]]; then ARCH="amd64"; fi \
-    && curl -J -L -o /tmp/code.tar.gz \
-        "https://github.com/coder/code-server/releases/download/${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION#v}-linux-${ARCH}.tar.gz" \
-    && mkdir -p /usr/local/lib/code-server \
-    && tar zxvf \
-        /tmp/code.tar.gz \
-        --strip 1 -C /usr/local/lib/code-server \
-    \
-    && ln -s /usr/local/lib/code-server/bin/code-server /usr/local/bin/code-server \
-    \
-    && mkdir -p /root/.code-server/extensions \
-    && uuid=$(uuidgen) \
-    && while read -r ext; do \
-        extention="${ext%%#*}" \
-        vendor="${extention%%.*}"; \
-        slug="${extention#*.}"; \
-        version="${ext##*#}"; \
-        \
-        echo "Installing vscode extension: ${slug} by ${vendor} @ ${version} "; \
-        \
-        echo "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/${vendor}/vsextensions/${slug}/${version}/vspackage"; \
-        curl -JL --retry 5 -o "/tmp/${extention}-${version}.vsix" \
-            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36" \
-            -H "x-market-user-id: ${uuid}" \
-            "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/${vendor}/vsextensions/${slug}/${version}/vspackage"; \
-        mkdir -p "/usr/local/lib/code-server/lib/vscode/extensions/${extention}-${version}"; \
-        bsdtar --strip-components=1 -xf "/tmp/${extention}-${version}.vsix" \
-                    -C "/usr/local/lib/code-server/lib/vscode/extensions/${extention}-${version}" extension; \
-        [ $? -ne 0 ] && exit 1; \
-        sleep 1; \
-    done < /root/vscode.extensions \
-    && ls -la /usr/local/lib/code-server/lib/vscode/extensions/ \
     \
     && curl -L -s -o /usr/bin/ha \
         "https://github.com/home-assistant/cli/releases/download/${HA_CLI_VERSION}/ha_${BUILD_ARCH}" \
@@ -127,12 +107,44 @@ RUN \
         /var/{cache,log}/* \
         /var/lib/apt/lists/*
 
+# Copy VS Code Server binaries/config from builder stage
+RUN set -o errexit -o nounset -o pipefail \
+    && if [ -d /opt/vscode-server-root/usr/share/code ]; then \
+        cp -a /opt/vscode-server-root/usr/share/code /usr/share/code; \
+    fi \
+    && if [ -d /opt/vscode-server-root/usr/lib/code ]; then \
+        cp -a /opt/vscode-server-root/usr/lib/code /usr/lib/code; \
+    fi \
+    && if [ -d /opt/vscode-server-root/usr/lib/vscode-server ]; then \
+        cp -a /opt/vscode-server-root/usr/lib/vscode-server /usr/lib/vscode-server; \
+    fi \
+    && if [ -d /opt/vscode-server-root/opt/vscode-server ]; then \
+        cp -a /opt/vscode-server-root/opt/vscode-server /opt/vscode-server; \
+    fi \
+    && if [ -x /opt/vscode-server-root/usr/bin/code ]; then \
+        cp /opt/vscode-server-root/usr/bin/code /usr/bin/code; \
+    fi \
+    && if [ -x /opt/vscode-server-root/usr/local/bin/code ]; then \
+        cp /opt/vscode-server-root/usr/local/bin/code /usr/local/bin/code; \
+    fi \
+    && if ! command -v code >/dev/null; then \
+        code_candidate=$(find /opt/vscode-server-root -type f \( -name code -o -name start-vscode \) | head -n 1); \
+        if [ -n "${code_candidate}" ]; then \
+            cp "${code_candidate}" /usr/local/bin/code; \
+        else \
+            echo "VS Code binary not found in builder image" >&2; \
+            exit 1; \
+        fi; \
+    fi \
+    && chmod +x /usr/local/bin/code \
+    && rm -rf /opt/vscode-server-root
+
 # Copy root filesystem
 COPY rootfs /
 
 # Health check
 HEALTHCHECK \
-    CMD curl --fail http://127.0.0.1:1337/healthz || exit 1
+    CMD curl --fail http://127.0.0.1:8000/ || exit 1
 
 # Build arguments
 ARG BUILD_ARCH

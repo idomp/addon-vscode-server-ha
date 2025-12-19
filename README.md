@@ -1,4 +1,4 @@
-# Home Assistant Community Add-on: Studio Code Server
+# Home Assistant Add-on: VS Code Server
 
 [![GitHub Release][releases-shield]][releases]
 ![Project Stage][project-stage-shield]
@@ -18,16 +18,18 @@
 
 [![Support Frenck on Patreon][patreon-shield]][patreon]
 
-A VSCode experience, accessible through the browser.
+A Microsoft VS Code Server experience, accessible through the browser.
 
 ![Studio Code Server in the Home Assistant Frontend](images/screenshot.png)
 
 ## About
 
-This add-on runs [code-server](https://github.com/cdr/code-server), which
-gives you a Visual Studio Code experience straight from the browser. It allows
-you to edit your Home Assistant configuration directly from your web browser,
-directly from within the Home Assistant frontend.
+This add-on runs the Microsoft VS Code Server image
+([ahmadnassri/vscode-server](https://github.com/ahmadnassri/docker-vscode-server)),
+offering the official VS Code marketplace so you can install GitHub Copilot and
+Copilot Chat directly from the editor. It allows you to edit your Home
+Assistant configuration directly from your web browser, directly from within
+the Home Assistant frontend.
 
 The add-on has the Home Assistant, MDI icons and YAML extensions pre-installed
 and pre-configured right out of the box. This means that auto-completion works
@@ -106,7 +108,7 @@ SOFTWARE.
 [discord-ha]: https://discord.gg/c5DvZ4e
 [discord-shield]: https://img.shields.io/discord/478094546522079232.svg
 [discord]: https://discord.me/hassioaddons
-[docs]: https://github.com/hassio-addons/addon-vscode/blob/main/vscode/DOCS.md
+[docs]: https://github.com/idomp/addon-vscode-server-ha/blob/main/vscode/DOCS.md
 [forum-shield]: https://img.shields.io/badge/community-forum-brightgreen.svg
 [forum]: https://community.home-assistant.io/t/home-assistant-community-add-on-visual-studio-code/107863?u=frenck
 [frenck]: https://github.com/frenck

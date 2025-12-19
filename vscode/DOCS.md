@@ -1,13 +1,18 @@
-# Home Assistant Community Add-on: Studio Code Server
+# Home Assistant Add-on: VS Code Server
 
-This add-on runs [code-server](https://github.com/coder/code-server), which
-gives you a Visual Studio Code experience straight from the browser. It allows
-you to edit your Home Assistant configuration directly from your web browser,
-directly from within the Home Assistant frontend.
+This add-on runs the Microsoft VS Code Server via
+[ahmadnassri/vscode-server](https://github.com/ahmadnassri/docker-vscode-server),
+providing the official VS Code marketplace so you can install extensions like
+GitHub Copilot and Copilot Chat directly from the UI. It allows you to edit
+your Home Assistant configuration directly from your web browser, directly from
+within the Home Assistant frontend.
 
 The add-on has the Home Assistant, MDI icons and YAML extensions pre-installed
 and pre-configured right out of the box. This means that auto-completion works
 instantly, without the need for configuring anything.
+
+VS Code Server listens on port `8000` inside the container and supports Home
+Assistant ingress as well as an optional direct port mapping when enabled.
 
 ## Installation
 
