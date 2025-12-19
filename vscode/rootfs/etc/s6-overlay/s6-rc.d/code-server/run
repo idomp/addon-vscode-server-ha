@@ -1,33 +1,33 @@
 #!/command/with-contenv bashio
 # shellcheck shell=bash
 # ==============================================================================
-# Home Assistant Community Add-on: Studio Code Server
-# Runs the code-server
+# Home Assistant Community Add-on: VS Code Server
+# Runs VS Code Server
 # ==============================================================================
 declare -a options
 declare config_path
 
-bashio::log.info 'Starting code-server...'
+bashio::log.info 'Starting VS Code Server...'
 
 config_path="/config"
 if bashio::config.has_value 'config_path'; then
     config_path=$(bashio::config 'config_path')
 fi
 
-options+=(--port 1337)
+options+=(serve-web)
+options+=(--host 0.0.0.0)
+options+=(--port 8000)
+options+=(--without-connection-token)
+options+=(--accept-server-license-terms)
+options+=(--telemetry-level off)
 options+=(--user-data-dir "/data/vscode")
 options+=(--extensions-dir "/data/vscode/extensions")
-options+=(--host 0.0.0.0)
-options+=(--disable-telemetry)
-options+=(--disable-update-check)
-
-# Disable code authentication, we use HA authentication
-options+=(--auth none)
+options+=(--server-data-dir "/data/vscode/server-data")
 
 # Export env variables for the Home Assistant extension
 export HASS_SERVER="http://supervisor/core"
 export HASS_TOKEN="${SUPERVISOR_TOKEN:-}"
 
-# Run the code server
+# Run the VS Code Server
 cd "${config_path}" || bashio::exit.nok "Could not change working directory"
-exec code-server "${options[@]}" "${config_path}"
+exec code "${options[@]}" "${config_path}"
