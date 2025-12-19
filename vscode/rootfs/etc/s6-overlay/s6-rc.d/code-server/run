@@ -30,4 +30,4 @@ export HASS_TOKEN="${SUPERVISOR_TOKEN:-}"
 
 # Run the VS Code Server
 cd "${config_path}" || bashio::exit.nok "Could not change working directory"
-exec code "${options[@]}" "${config_path}"
+exec code "${options[@]}"
