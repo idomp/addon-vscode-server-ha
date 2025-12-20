@@ -55,3 +55,16 @@ present:
 
 You should see at least one match inside a `workbench*.js` file. If not, the
 patch failed and the add-on should be considered unhealthy.
+
+## Manual test plan
+
+To validate Copilot's `run_in_terminal` tool end-to-end:
+
+1. Build the image and start the add-on (either under Home Assistant or with
+   `docker run`).
+2. Open the VS Code UI in your browser and trigger Copilot's `run_in_terminal`
+   twice.
+3. Check the container logs to confirm no `ENOPRO` errors appear when the tool
+   runs.
+4. Inspect the served workbench bundle for `/* patched: run_in_terminal */`
+   (as shown above) to ensure the patch was applied to the workbench assets.
