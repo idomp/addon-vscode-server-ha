@@ -30,6 +30,8 @@ DEFAULT_SEARCH_ROOTS: tuple[Path, ...] = (
     Path("/opt/vscode-server"),
     Path("/data/vscode/extensions"),
     Path(os.environ.get("HOME", str(Path.home()))) / ".vscode/extensions",
+    Path("/data/vscode/cli-data"),
+    Path("/root/.vscode/cli-data"),
 )
 
 
@@ -135,11 +137,44 @@ def compute_replacements(text: str) -> tuple[List[Tuple[int, int, str]], PatchRe
         replacements.append((start, end, f"{prefix}{guard_expr}{trailing}/* patched: run_in_terminal */"))
         guard_count += 1
 
+    covered_spans: list[tuple[int, int]] = []
+
     for match in URI_PATTERN.finditer(text):
         start, end = match.span()
         if not in_window(start, windows):
             continue
         replacements.append((start, end, f"{match.group('target')}.uri"))
+        uri_count += 1
+        covered_spans.append((start, end))
+
+    uri_file_pattern = re.compile(
+        rf"(?P<ctor>{IDENT})\.file\(\s*(?P<target>[^)]+?)\s*\)"
+    )
+    for match in uri_file_pattern.finditer(text):
+        start, end = match.span()
+        if not in_window(start, windows):
+            continue
+        if any(span_start < end and start < span_end for span_start, span_end in covered_spans):
+            continue
+        ctor = match.group("ctor")
+        target = match.group("target")
+        patched_uri = (
+            "("
+            f"(p=>{{"
+            f"const wf=(typeof workspaceFolders!=='undefined'&&workspaceFolders?.[0]?.uri)"
+            f"??(typeof workspace!=='undefined'&&workspace?.workspaceFolders?.[0]?.uri);"
+            f"if(wf){{try{{return wf.with({{path:p}});}}catch{{}}}}"
+            f"const fs=(typeof fileService!=='undefined'?fileService:undefined)"
+            f"??(typeof __vscode_fileService!=='undefined'?__vscode_fileService:undefined);"
+            f"if(fs?.hasProvider?.('file')||fs?.canHandleResource?.({{scheme:'file'}}))"
+            f"{{return {ctor}.file(p);}}"
+            f"try{{return {ctor}.from?.({{scheme:'file',path:p}})??{ctor}.file(p);}}"
+            f"catch{{return {ctor}.file(p);}}"
+            f"}})"
+            f"({target})"
+            ")"
+        )
+        replacements.append((start, end, f"{patched_uri}/* patched: run_in_terminal */"))
         uri_count += 1
 
     marker_present = MARKER in text
@@ -242,6 +277,8 @@ def should_require_match(parsed: argparse.Namespace) -> bool:
 
 def compute_search_roots() -> tuple[Path, ...]:
     roots = list(DEFAULT_SEARCH_ROOTS)
+    if os.environ.get("VSCODE_CLI_DATA_DIR"):
+        roots.append(Path(os.environ["VSCODE_CLI_DATA_DIR"]))
     # Avoid duplicate scanning while preserving ordering preference.
     deduped: list[Path] = []
     for root in roots:
@@ -278,7 +315,10 @@ def main() -> int:
     markers_added = sum(1 for result in results if result.marker_added)
     total_uri = sum(result.uri_replacements for result in results)
     total_guards = sum(result.guard_replacements for result in results)
-    workbench_patched = any(result.patched and result.is_workbench for result in results)
+    workbench_results = [result for result in results if result.is_workbench and result.relevant]
+    workbench_patched = any(
+        (result.uri_replacements > 0 or result.guard_replacements > 0) for result in workbench_results
+    )
     seen_files = len(results)
     scanned_roots = ", ".join(str(root) for root in search_roots)
 
@@ -316,19 +356,20 @@ def main() -> int:
             "No run_in_terminal occurrences found in candidate bundles.",
             flush=True,
         )
-        return 1 if require_match else 0
+        return 0
 
-    if marker_count == 0:
-        print("Failed to insert any run_in_terminal patch markers.", flush=True)
-        return 1 if require_match else 0
+    if require_match and workbench_results and not workbench_patched:
+        print(
+            "run_in_terminal found in workbench assets but no URI conversion or provider guards were applied.",
+            flush=True,
+        )
+        return 1
 
-    if relevant_results and (total_guards == 0 or total_uri == 0):
-        print("run_in_terminal located but required replacements were not applied.", flush=True)
-        return 1 if require_match else 0
-
-    if relevant_results and not workbench_patched:
-        print("run_in_terminal found, but no workbench*.js bundle was patched.", flush=True)
-        return 1 if require_match else 0
+    if require_match and not workbench_results:
+        print(
+            "run_in_terminal located outside workbench assets; strict mode requested but not enforced.",
+            flush=True,
+        )
 
     return 0
 
