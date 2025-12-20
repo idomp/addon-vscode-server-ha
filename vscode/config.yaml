@@ -1,6 +1,6 @@
 ---
 name: VS Code Server
-version: 0.4.0
+version: 0.4.1
 slug: vscode
 description: VS Code Server with Copilot support and the official marketplace in Home Assistant.
 url: https://github.com/idomp/addon-vscode-server-ha
