@@ -10,7 +10,7 @@ marketplace, GitHub Copilot, and Copilot Chat from the Home Assistant frontend.
 - Internal port: `8000`
 - Home Assistant ingress is enabled by default.
 - You can optionally expose `8000/tcp` for direct access when running outside of
-ingress.
+  ingress.
 
 ## Building locally
 

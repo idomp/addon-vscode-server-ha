@@ -13,7 +13,7 @@ The design is based on:
 - Upstream add-on: `hassio-addons/addon-vscode`
 - VS Code Server Docker image: `ahmadnassri/vscode-server`
 
-Follow the steps below. **Do not guess paths or env vars if you can inspect them from the upstream repos or images.** Always prefer *reading* the existing Dockerfiles/scripts over inventing new conventions.
+Follow the steps below. **Do not guess paths or env vars if you can inspect them from the upstream repos or images.** Always prefer _reading_ the existing Dockerfiles/scripts over inventing new conventions.
 
 ---
 
@@ -201,7 +201,7 @@ Mirror the network mode of the original `addon-vscode`; only change the port val
 - Leave the `slug` as configured in this repo (e.g. `vscode` or `vscode_server`).
 - Because this repository is different from the official `hassio-addons/addon-vscode`, Home Assistant will generate a different **addon ID** (prefix), allowing both to be installed at the same time.
 
-Do *not* reuse the exact combination of repo + slug used by the official add-on.
+Do _not_ reuse the exact combination of repo + slug used by the official add-on.
 
 ---
 
@@ -237,7 +237,6 @@ Use whichever CLI path is correct for the VS Code Server binary inside this imag
 ## 6. Docs & metadata
 
 1. Update or create `vscode/README.md` to explain:
-
    - This add-on runs **Microsoft VS Code Server**, not `code-server`.
    - It is designed to support:
      - Official VS Code marketplace
@@ -245,7 +244,6 @@ Use whichever CLI path is correct for the VS Code Server binary inside this imag
    - It uses internal port `8000` and supports HA ingress and an optional direct port.
 
 2. In `config.yaml`:
-
    - Update `name` (e.g. `"VS Code Server"`).
    - Update `description` (e.g. `"VS Code Server with Copilot support for Home Assistant"`).
    - Increment `version`.
@@ -259,7 +257,6 @@ Use whichever CLI path is correct for the VS Code Server binary inside this imag
 ### 7.1 Build
 
 1. Add a simple build script or document steps (README):
-
    - How to build the add-on image locally using `docker build` with:
      - `--build-arg BUILD_FROM=...` matching HA’s base image for the target architecture.
      - Optional `--build-arg VSCODE_SERVER_TAG=...` to pin the VS Code Server image.
