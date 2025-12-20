@@ -40,6 +40,21 @@ if bashio::config.has_value 'config_path'; then
     fi
 fi
 
+if command -v python3 >/dev/null && [ -x /usr/local/bin/patch_run_in_terminal.py ]; then
+    if patch_output=$(python3 /usr/local/bin/patch_run_in_terminal.py 2>&1); then
+        while IFS= read -r line; do
+            bashio::log.info "[run_in_terminal patch] ${line}"
+        done <<< "${patch_output}"
+    else
+        while IFS= read -r line; do
+            bashio::log.error "[run_in_terminal patch] ${line}"
+        done <<< "${patch_output}"
+        bashio::exit.nok "Failed to patch Copilot run_in_terminal bundle"
+    fi
+else
+    bashio::log.warning "run_in_terminal patcher not available; Copilot terminal tool may fail"
+fi
+
 # Ensure persistent data folder exists.
 if ! bashio::fs.directory_exists '/data/vscode'; then
     mkdir -p /data/vscode/extensions \
