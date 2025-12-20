@@ -47,19 +47,19 @@ def compute_replacements(text: str) -> Tuple[List[Tuple[int, int, str]], bool]:
 
     replacements: List[Tuple[int, int, str]] = []
 
-    # Guard fileService.stat usage near the tool registration/handler.
-    stat_pattern = re.compile(
-        r"await\s+((?:[A-Za-z0-9_$]+\.)*[A-Za-z0-9_$]+)\.stat\(([^)]+)\);"
+    # Guard fileService stat/exists/resolve usage near the tool registration/handler.
+    guarded_pattern = re.compile(
+        r"await\s+((?:[A-Za-z0-9_$]+\.)*[A-Za-z0-9_$]+)\.(stat|exists|resolve)\(([^)]+)\);"
     )
-    for match in stat_pattern.finditer(text):
+    for match in guarded_pattern.finditer(text):
         start, end = match.span()
         if any(pos - 800 <= start <= pos + 4000 for pos in run_positions):
-            service = match.group(1)
-            arg = match.group(2)
+            service, method, arg = match.groups()
+            fallback = "Promise.resolve(true)" if method == "exists" else "Promise.resolve()"
             replacement = (
                 f"await ((({service}.hasProvider?.({arg})) ?? "
                 f"({service}.canHandleResource?.({arg})) ?? false) "
-                f"? {service}.stat({arg}) : Promise.resolve());"
+                f"? {service}.{method}({arg}) : {fallback});"
             )
             replacements.append((start, end, replacement))
 
