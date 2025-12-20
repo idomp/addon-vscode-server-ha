@@ -33,6 +33,10 @@ The add-on patches the bundled VS Code assets on startup to keep Copilot's
 `run_in_terminal` tool working in the browser build. To confirm the patch is
 present:
 
+Startup patch failures now emit a warning by default; set
+`PATCH_RUN_IN_TERMINAL_STRICT=true` to fail the container when the patcher
+cannot adjust the bundles.
+
 1. Build the image (as shown above) and start a container shell:
 
    ```bash
@@ -50,8 +54,21 @@ present:
    workbench bundle:
 
    ```bash
-   ack "patched: run_in_terminal" /usr/lib/code /usr/lib/vscode-server /opt/vscode-server
+   ack "patched: run_in_terminal" \
+     "${VSCODE_CLI_DATA_DIR:-/data/vscode/cli-data}" \
+     /usr/lib/code /usr/lib/vscode-server /opt/vscode-server /data/vscode/extensions /root/.vscode/cli-data
    ```
 
 You should see at least one match inside a `workbench*.js` file. If not, the
 patch failed and the add-on should be considered unhealthy.
+
+## Test plan
+
+1. Build the add-on image and start it inside Home Assistant or via `docker run`.
+2. Connect to VS Code in the browser and trigger Copilot's `run_in_terminal`
+   twice (for example, by asking Copilot Chat to run a command in the terminal).
+3. Confirm no `ENOPRO: No file system provider found for resource` messages
+   appear in the add-on logs after either invocation.
+4. Verify the `/* patched: run_in_terminal */` marker exists in a
+   `workbench*.js` bundle under `${VSCODE_CLI_DATA_DIR:-/data/vscode/cli-data}`
+   (or the other default search roots above).

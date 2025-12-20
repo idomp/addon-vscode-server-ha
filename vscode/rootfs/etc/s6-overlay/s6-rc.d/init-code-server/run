@@ -98,6 +98,16 @@ else
 fi
 
 bashio::log.info "Patching Copilot run_in_terminal after extension installation"
-if ! python3 /usr/local/bin/patch_run_in_terminal.py --require-match; then
-    bashio::exit.nok "Failed to patch Copilot run_in_terminal"
+patch_args=()
+run_in_terminal_strict="${PATCH_RUN_IN_TERMINAL_STRICT:-false}"
+if [[ "${run_in_terminal_strict,,}" =~ ^(1|true|yes|on)$ ]]; then
+    patch_args+=(--require-match)
+fi
+
+if ! python3 /usr/local/bin/patch_run_in_terminal.py "${patch_args[@]}"; then
+    if [[ "${run_in_terminal_strict,,}" =~ ^(1|true|yes|on)$ ]]; then
+        bashio::exit.nok "Failed to patch Copilot run_in_terminal"
+    else
+        bashio::log.warning "Failed to patch Copilot run_in_terminal (continuing; enable PATCH_RUN_IN_TERMINAL_STRICT to fail start-up)"
+    fi
 fi

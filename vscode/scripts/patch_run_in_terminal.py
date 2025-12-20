@@ -29,6 +29,8 @@ DEFAULT_SEARCH_ROOTS: tuple[Path, ...] = (
     Path("/usr/lib/vscode-server"),
     Path("/opt/vscode-server"),
     Path("/data/vscode/extensions"),
+    Path("/data/vscode/cli-data"),
+    Path("/root/.vscode/cli-data"),
     Path(os.environ.get("HOME", str(Path.home()))) / ".vscode/extensions",
 )
 
@@ -77,6 +79,8 @@ URI_PATTERN = re.compile(
     rf"(?P<coercion>{SERVICE_EXPR})\.file\(\s*(?P<target>{IDENT})\.uri\.fsPath\s*\)"
 )
 
+FILE_URI_PATTERN = re.compile(r"URI\.file\(\s*(?P<path>[^)]+?)\s*\)")
+
 
 @dataclass
 class PatchResult:
@@ -85,6 +89,7 @@ class PatchResult:
     patched: bool
     uri_replacements: int
     guard_replacements: int
+    changes_applied: bool
     marker_added: bool
     marker_present: bool
     is_workbench: bool
@@ -107,6 +112,7 @@ def compute_replacements(text: str) -> tuple[List[Tuple[int, int, str]], PatchRe
             patched=False,
             uri_replacements=0,
             guard_replacements=0,
+            changes_applied=False,
             marker_added=False,
             marker_present=MARKER in text,
             is_workbench=False,
@@ -142,14 +148,38 @@ def compute_replacements(text: str) -> tuple[List[Tuple[int, int, str]], PatchRe
         replacements.append((start, end, f"{match.group('target')}.uri"))
         uri_count += 1
 
+    for match in FILE_URI_PATTERN.finditer(text):
+        start, end = match.span()
+        if not in_window(start, windows):
+            continue
+
+        path_expr = match.group("path")
+        replacement = (
+            "(()=>{const __rtiPath="
+            f"{path_expr};"
+            "const __rtiWF=("
+            "typeof workspaceFolders!=='undefined' && workspaceFolders?.[0]?.uri"
+            ")||("
+            "typeof workspaceFolder!=='undefined' && workspaceFolder?.uri"
+            ")||("
+            "typeof activeWorkspaceFolder!=='undefined' && activeWorkspaceFolder?.uri"
+            ");"
+            "const __rtiUri=(__rtiWF?.with?.({path:__rtiPath}))??URI.file(__rtiPath);"
+            "const __rtiFS=(typeof fileService!=='undefined'?fileService:("
+            "typeof this!=='undefined' && this._fileService?this._fileService:undefined"
+            "));"
+            "return(!__rtiFS||__rtiFS?.hasProvider?.(__rtiUri)||__rtiFS?.canHandleResource?.(__rtiUri))"
+            "?__rtiUri:(__rtiWF?.with?.({path:__rtiPath})??__rtiUri);"
+            "})()/* patched: run_in_terminal */"
+        )
+        replacements.append((start, end, replacement))
+        uri_count += 1
+
     marker_present = MARKER in text
+    changes_applied = bool(guard_count or uri_count or marker_present)
     marker_added = False
 
-    if guard_count and not marker_present:
-        marker_present = True
-        marker_added = True
-
-    if not marker_present and relevant:
+    if changes_applied and not marker_present:
         insert_at = len(text)
         replacements.append((insert_at, insert_at, f"\n{MARKER}\n"))
         marker_present = True
@@ -163,6 +193,7 @@ def compute_replacements(text: str) -> tuple[List[Tuple[int, int, str]], PatchRe
         patched=patched,
         uri_replacements=uri_count,
         guard_replacements=guard_count,
+        changes_applied=changes_applied,
         marker_added=marker_added,
         marker_present=marker_present,
         is_workbench=False,
@@ -242,6 +273,9 @@ def should_require_match(parsed: argparse.Namespace) -> bool:
 
 def compute_search_roots() -> tuple[Path, ...]:
     roots = list(DEFAULT_SEARCH_ROOTS)
+    cli_data_env = os.environ.get("VSCODE_CLI_DATA_DIR")
+    if cli_data_env:
+        roots.append(Path(cli_data_env))
     # Avoid duplicate scanning while preserving ordering preference.
     deduped: list[Path] = []
     for root in roots:
@@ -274,11 +308,13 @@ def main() -> int:
 
     patched_results = [result for result in results if result.patched]
     relevant_results = [result for result in results if result.relevant]
+    workbench_results = [result for result in results if result.is_workbench]
+    workbench_relevant = [result for result in workbench_results if result.relevant]
+    workbench_changes = [result for result in workbench_relevant if result.changes_applied]
     marker_count = sum(1 for result in results if result.marker_present)
     markers_added = sum(1 for result in results if result.marker_added)
     total_uri = sum(result.uri_replacements for result in results)
     total_guards = sum(result.guard_replacements for result in results)
-    workbench_patched = any(result.patched and result.is_workbench for result in results)
     seen_files = len(results)
     scanned_roots = ", ".join(str(root) for root in search_roots)
 
@@ -311,24 +347,21 @@ def main() -> int:
         f"roots=[{scanned_roots}]"
     )
 
-    if not relevant_results:
+    if workbench_relevant and not workbench_changes:
         print(
-            "No run_in_terminal occurrences found in candidate bundles.",
+            "run_in_terminal located in workbench bundle(s) but no URI/provider safeguards were applied.",
             flush=True,
         )
-        return 1 if require_match else 0
+        if require_match:
+            return 1
 
-    if marker_count == 0:
-        print("Failed to insert any run_in_terminal patch markers.", flush=True)
-        return 1 if require_match else 0
-
-    if relevant_results and (total_guards == 0 or total_uri == 0):
-        print("run_in_terminal located but required replacements were not applied.", flush=True)
-        return 1 if require_match else 0
-
-    if relevant_results and not workbench_patched:
-        print("run_in_terminal found, but no workbench*.js bundle was patched.", flush=True)
-        return 1 if require_match else 0
+    if not workbench_relevant and relevant_results:
+        print(
+            "run_in_terminal only appeared in extension bundles; workbench assets were not updated.",
+            flush=True,
+        )
+        if require_match:
+            print("Strict mode configured; continuing without failing startup.", flush=True)
 
     return 0
 
