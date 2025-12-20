@@ -138,6 +138,65 @@ RUN set -o errexit -o nounset -o pipefail \
     && chmod +x /usr/local/bin/code \
     && rm -rf /opt/vscode-server-root
 
+# Patch Copilot run_in_terminal to tolerate missing file:// providers in web workbench
+RUN cat > /tmp/run-in-terminal-patch.js <<'EOF'
+;(() => {
+  try {
+    const requireFn = self.require || globalThis.require;
+    if (!requireFn) {
+      console?.warn?.('[copilot-run-in-terminal] AMD require not available; skipping patch');
+      return;
+    }
+    requireFn(['vs/platform/files/common/fileService', 'vs/base/common/network'], (fileServiceModule, network) => {
+      const FileService = fileServiceModule?.FileService || fileServiceModule?.default;
+      if (!FileService) {
+        console?.warn?.('[copilot-run-in-terminal] FileService unavailable; skipping patch');
+        return;
+      }
+      if (FileService.prototype.__copilotRunInTerminalPatched) {
+        return;
+      }
+      const originalStat = FileService.prototype.stat;
+      FileService.prototype.stat = function (resource, opts) {
+        const logger = this._logService || this.logService;
+        try {
+          const hasProvider = (typeof this.hasProvider === 'function' && this.hasProvider(resource))
+            || (typeof this.canHandleResource === 'function' && this.canHandleResource(resource));
+          const fileScheme = resource?.scheme === 'file' || resource?.scheme === network?.Schemas?.file;
+          if (!hasProvider && fileScheme) {
+            logger?.trace?.('[copilot-run-in-terminal] skipping stat; no provider for ' + (resource?.toString?.(true) ?? resource));
+            return Promise.resolve(undefined);
+          }
+        } catch (err) {
+          logger?.trace?.('[copilot-run-in-terminal] provider check failed: ' + (err?.message ?? err));
+        }
+        return Promise.resolve(originalStat.call(this, resource, opts)).catch(err => {
+          const code = String(err?.code ?? err?.name ?? '').toUpperCase();
+          const fileScheme = resource?.scheme === 'file' || resource?.scheme === network?.Schemas?.file;
+          if (fileScheme && (code === 'ENOPRO' || code === 'ENOENT')) {
+            logger?.trace?.('[copilot-run-in-terminal] swallowing stat error for ' + (resource?.toString?.(true) ?? resource) + ': ' + code);
+            return undefined;
+          }
+          throw err;
+        });
+      };
+      FileService.prototype.__copilotRunInTerminalPatched = true;
+    });
+  } catch (err) {
+    console?.warn?.('[copilot-run-in-terminal] patch failed', err);
+  }
+})();
+EOF
+
+RUN set -o errexit -o nounset -o pipefail \
+    && find /usr -type f -name 'workbench.web.main.js' -print0 \
+      | while IFS= read -r -d '' file; do \
+          if ! grep -q "copilot-run-in-terminal" "$file"; then \
+            cat /tmp/run-in-terminal-patch.js >> "$file"; \
+          fi; \
+        done \
+    && rm /tmp/run-in-terminal-patch.js
+
 # Copy root filesystem
 COPY rootfs /
 
