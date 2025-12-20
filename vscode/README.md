@@ -26,3 +26,21 @@ docker build \
 
 Replace `BUILD_FROM` with the Home Assistant base image for your architecture
 and, if desired, pin `VSCODE_SERVER_TAG` to a specific VS Code Server release.
+
+## Verifying the Copilot `run_in_terminal` patch
+
+The build/startup logs now show which bundles were patched and confirm the marker
+`/* patched: run_in_terminal */` is present. You can also verify manually:
+
+1. Locate the served `workbench` bundle path:
+   ```bash
+   python3 /usr/local/bin/patch_run_in_terminal.py --require-patch | grep -i workbench
+   ```
+2. Confirm the marker exists in the served bundle (replace the path if different):
+   ```bash
+   grep -n "patched: run_in_terminal" /opt/vscode-server/resources/app/out/vs/workbench/workbench.web.main.js
+   ```
+3. Hard-refresh the VS Code web UI to drop cached bundles:
+   - Open the VS Code tab.
+   - Open DevTools (F12), then right-click the reload button and choose **Empty
+     Cache and Hard Reload** (or Shift+Reload).
