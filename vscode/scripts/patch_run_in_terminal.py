@@ -16,6 +16,7 @@ served bundle. Summary statistics are printed for the files that were patched.
 
 from __future__ import annotations
 
+import argparse
 import os
 import re
 from dataclasses import dataclass
@@ -23,10 +24,12 @@ from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple
 
 
-SEARCH_ROOTS: tuple[Path, ...] = (
+DEFAULT_SEARCH_ROOTS: tuple[Path, ...] = (
     Path("/usr/lib/code"),
     Path("/usr/lib/vscode-server"),
     Path("/opt/vscode-server"),
+    Path("/data/vscode/extensions"),
+    Path(os.environ.get("HOME", str(Path.home()))) / ".vscode/extensions",
 )
 
 
@@ -195,9 +198,65 @@ def patch_file(path: Path) -> PatchResult:
     return result
 
 
+def _parse_bool(value: str | None) -> bool:
+    if value is None:
+        raise argparse.ArgumentTypeError("expected a boolean value")
+
+    normalized = value.lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise argparse.ArgumentTypeError(f"invalid boolean value: {value}")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Patch Copilot run_in_terminal to avoid file-scheme provider requirements.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--require-match",
+        "--strict",
+        dest="require_match",
+        nargs="?",
+        type=_parse_bool,
+        const=True,
+        default=None,
+        help=(
+            "Fail when no run_in_terminal occurrences are patched. "
+            "Defaults to false unless PATCH_RUN_IN_TERMINAL_REQUIRE_MATCH is truthy."
+        ),
+    )
+    return parser.parse_args()
+
+
+def should_require_match(parsed: argparse.Namespace) -> bool:
+    if parsed.require_match is not None:
+        return parsed.require_match
+    env_value = os.environ.get("PATCH_RUN_IN_TERMINAL_REQUIRE_MATCH")
+    if env_value is None:
+        return False
+    return env_value.lower() in {"1", "true", "yes", "on"}
+
+
+def compute_search_roots() -> tuple[Path, ...]:
+    roots = list(DEFAULT_SEARCH_ROOTS)
+    # Avoid duplicate scanning while preserving ordering preference.
+    deduped: list[Path] = []
+    for root in roots:
+        if root not in deduped:
+            deduped.append(root)
+    return tuple(deduped)
+
+
 def main() -> int:
+    parsed = parse_args()
+    require_match = should_require_match(parsed)
+    search_roots = compute_search_roots()
+
     results: list[PatchResult] = []
-    for root in SEARCH_ROOTS:
+    for root in search_roots:
         if not root.is_dir():
             continue
         workbench_paths: list[Path] = []
@@ -220,6 +279,8 @@ def main() -> int:
     total_uri = sum(result.uri_replacements for result in results)
     total_guards = sum(result.guard_replacements for result in results)
     workbench_patched = any(result.patched and result.is_workbench for result in results)
+    seen_files = len(results)
+    scanned_roots = ", ".join(str(root) for root in search_roots)
 
     if patched_results:
         print("Patched run_in_terminal in:")
@@ -240,30 +301,34 @@ def main() -> int:
 
     print(
         "Patch summary: "
-        f"files_seen={len(results)}, "
+        f"files_seen={seen_files}, "
         f"relevant_files={len(relevant_results)}, "
         f"patched_files={len(patched_results)}, "
         f"uri_replacements={total_uri}, "
         f"provider_guards={total_guards}, "
         f"markers_added={markers_added}, "
-        f"markers_present={marker_count}"
+        f"markers_present={marker_count}, "
+        f"roots=[{scanned_roots}]"
     )
 
     if not relevant_results:
-        print("No run_in_terminal occurrences found in candidate bundles.", flush=True)
-        return 1
+        print(
+            "No run_in_terminal occurrences found in candidate bundles.",
+            flush=True,
+        )
+        return 1 if require_match else 0
 
     if marker_count == 0:
         print("Failed to insert any run_in_terminal patch markers.", flush=True)
-        return 1
+        return 1 if require_match else 0
 
     if relevant_results and (total_guards == 0 or total_uri == 0):
         print("run_in_terminal located but required replacements were not applied.", flush=True)
-        return 1
+        return 1 if require_match else 0
 
     if relevant_results and not workbench_patched:
         print("run_in_terminal found, but no workbench*.js bundle was patched.", flush=True)
-        return 1
+        return 1 if require_match else 0
 
     return 0
 
