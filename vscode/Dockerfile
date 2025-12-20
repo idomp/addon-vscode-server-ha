@@ -138,6 +138,10 @@ RUN set -o errexit -o nounset -o pipefail \
     && chmod +x /usr/local/bin/code \
     && rm -rf /opt/vscode-server-root
 
+# Patch Copilot run_in_terminal to avoid file-scheme provider requirements
+COPY scripts/patch_run_in_terminal.py /usr/local/bin/patch_run_in_terminal.py
+RUN python3 /usr/local/bin/patch_run_in_terminal.py
+
 # Copy root filesystem
 COPY rootfs /
 
