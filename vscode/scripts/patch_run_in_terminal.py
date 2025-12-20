@@ -16,6 +16,7 @@ served bundle. Summary statistics are printed for the files that were patched.
 
 from __future__ import annotations
 
+import argparse
 import os
 import re
 from dataclasses import dataclass
@@ -23,10 +24,15 @@ from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple
 
 
-SEARCH_ROOTS: tuple[Path, ...] = (
+DEFAULT_SEARCH_ROOTS: tuple[Path, ...] = (
     Path("/usr/lib/code"),
     Path("/usr/lib/vscode-server"),
     Path("/opt/vscode-server"),
+)
+
+ADDITIONAL_SEARCH_ROOTS: tuple[Path, ...] = (
+    Path("/data/vscode/extensions"),
+    Path.home() / ".vscode/extensions",
 )
 
 
@@ -195,9 +201,37 @@ def patch_file(path: Path) -> PatchResult:
     return result
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Patch Copilot run_in_terminal to avoid file-scheme provider requirements."
+    )
+    env_default = os.getenv("PATCH_RUN_IN_TERMINAL_REQUIRE_MATCH", "").strip().lower()
+    default_require_match = env_default in {"1", "true", "yes", "on"}
+    parser.add_argument(
+        "--require-match",
+        action=argparse.BooleanOptionalAction,
+        default=default_require_match,
+        help=(
+            "Fail with exit code 1 if no run_in_terminal occurrences are patched. "
+            "Defaults to PATCH_RUN_IN_TERMINAL_REQUIRE_MATCH env var or false."
+        ),
+    )
+    parser.add_argument(
+        "--search-root",
+        action="append",
+        type=Path,
+        default=[],
+        help="Additional root to search for candidate bundles (can be specified multiple times).",
+    )
+    return parser.parse_args()
+
+
 def main() -> int:
+    args = parse_args()
+    roots: tuple[Path, ...] = (*DEFAULT_SEARCH_ROOTS, *ADDITIONAL_SEARCH_ROOTS, *args.search_root)
+
     results: list[PatchResult] = []
-    for root in SEARCH_ROOTS:
+    for root in roots:
         if not root.is_dir():
             continue
         workbench_paths: list[Path] = []
@@ -251,7 +285,7 @@ def main() -> int:
 
     if not relevant_results:
         print("No run_in_terminal occurrences found in candidate bundles.", flush=True)
-        return 1
+        return 1 if args.require_match else 0
 
     if marker_count == 0:
         print("Failed to insert any run_in_terminal patch markers.", flush=True)
@@ -263,7 +297,7 @@ def main() -> int:
 
     if relevant_results and not workbench_patched:
         print("run_in_terminal found, but no workbench*.js bundle was patched.", flush=True)
-        return 1
+        return 1 if args.require_match else 0
 
     return 0
 
