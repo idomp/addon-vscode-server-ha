@@ -26,3 +26,32 @@ docker build \
 
 Replace `BUILD_FROM` with the Home Assistant base image for your architecture
 and, if desired, pin `VSCODE_SERVER_TAG` to a specific VS Code Server release.
+
+## Verifying the Copilot run_in_terminal patch
+
+The add-on patches the bundled VS Code assets on startup to keep Copilot's
+`run_in_terminal` tool working in the browser build. To confirm the patch is
+present:
+
+1. Build the image (as shown above) and start a container shell:
+
+   ```bash
+   docker run --rm -it --entrypoint bash local/vscode-server-ha
+   ```
+
+2. Run the patcher and verify it exits successfully (idempotent runs should also
+   return `0`):
+
+   ```bash
+   python3 /usr/local/bin/patch_run_in_terminal.py
+   ```
+
+3. Search for the marker (`/* patched: run_in_terminal */`) in the served
+   workbench bundle:
+
+   ```bash
+   ack "patched: run_in_terminal" /usr/lib/code /usr/lib/vscode-server /opt/vscode-server
+   ```
+
+You should see at least one match inside a `workbench*.js` file. If not, the
+patch failed and the add-on should be considered unhealthy.
