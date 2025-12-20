@@ -140,7 +140,8 @@ RUN set -o errexit -o nounset -o pipefail \
 
 # Patch Copilot run_in_terminal to avoid file-scheme provider requirements
 COPY scripts/patch_run_in_terminal.py /usr/local/bin/patch_run_in_terminal.py
-RUN python3 /usr/local/bin/patch_run_in_terminal.py
+# Non-strict patching during build to avoid failures when extensions are absent
+RUN python3 /usr/local/bin/patch_run_in_terminal.py --no-require-match
 
 # Copy root filesystem
 COPY rootfs /

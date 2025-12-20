@@ -77,11 +77,6 @@ if [[ " ${PREVIOUS_DEFAULT_CONFIG_HASHES[*]} " == *" ${current} "* ]]; then
     cp "${default_settings}" /data/vscode/User/settings.json
 fi
 
-bashio::log.info "Patching Copilot run_in_terminal in bundled VS Code assets"
-if ! python3 /usr/local/bin/patch_run_in_terminal.py; then
-    bashio::exit.nok "Failed to patch Copilot run_in_terminal"
-fi
-
 if command -v code >/dev/null; then
     while read -r ext; do
         extension="${ext%%#*}"
@@ -100,4 +95,9 @@ if command -v code >/dev/null; then
     done < /root/vscode.extensions
 else
     bashio::log.warning "VS Code binary not found; skipping extension installation"
+fi
+
+bashio::log.info "Patching Copilot run_in_terminal in installed VS Code assets"
+if ! python3 /usr/local/bin/patch_run_in_terminal.py --require-match; then
+    bashio::exit.nok "Failed to patch Copilot run_in_terminal"
 fi
