@@ -1,0 +1,114 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ============================================================================
+# Patch the Copilot Chat run_in_terminal tool to avoid hard dependencies on
+# file:// providers in the web workbench. The tool validates the workspace
+# folder via the VS Code file service, which throws ENOPRO in the browser when
+# a file provider is not registered. This script softens that validation so the
+# tool can keep working in VS Code Web.
+# ============================================================================
+set -euo pipefail
+
+bashio::log.info "Patching Copilot run_in_terminal tool (skip missing file providers)"
+
+if ! command -v node >/dev/null 2>&1; then
+    bashio::log.warning "Node.js is not available; skipping Copilot run_in_terminal patch"
+    exit 0
+fi
+
+patched_any=false
+roots=(
+    /usr/share/code
+    /usr/lib/code
+    /usr/lib/vscode-server
+    /usr/lib/vscode-server/bin
+    /opt/vscode-server
+    /opt/vscode-server/bin
+    /data/vscode/extensions
+)
+
+for root in "${roots[@]}"; do
+    [[ -d "${root}" ]] || continue
+
+    # Search for bundled Copilot Chat artifacts that mention the run_in_terminal tool.
+    mapfile -t files < <(grep -R "run_in_terminal" -n "${root}" 2>/dev/null | cut -d: -f1 | sort -u)
+
+    for file in "${files[@]}"; do
+        [[ -f "${file}" ]] || continue
+
+        if node - "${file}" <<'NODE'
+const fs = require('fs');
+const path = process.argv[1];
+
+let text = fs.readFileSync(path, 'utf8');
+
+// Skip if already patched or if the tool marker is not present.
+if (text.includes('__COPILOT_RUN_IN_TERMINAL_PATCH__') || !text.includes('run_in_terminal')) {
+    process.exit(0);
+}
+
+const helper = `
+const __COPILOT_RUN_IN_TERMINAL_PATCH__ = true;
+const __copilotSafeFileProbe__ = async (svc, resource, method = "stat") => {
+    if (!svc || !resource) {
+        return undefined;
+    }
+
+    const canValidate = typeof svc.hasProvider === "function" ? svc.hasProvider(resource) : undefined;
+    const canHandle = typeof svc.canHandleResource === "function" ? svc.canHandleResource(resource) : undefined;
+
+    // If the service explicitly reports no provider, skip validation entirely.
+    if (canValidate === false || canHandle === false) {
+        return undefined;
+    }
+
+    // In web builds, file:// often lacks a provider; bypass validation instead of throwing.
+    if (canValidate !== true && canHandle !== true && resource?.scheme === "file") {
+        return undefined;
+    }
+
+    const fn = typeof svc[method] === "function" ? svc[method].bind(svc) : undefined;
+    if (!fn) {
+        return undefined;
+    }
+
+    try {
+        return await fn(resource);
+    } catch (err) {
+        const code = String(err?.code ?? err?.name ?? "").toUpperCase();
+        if (code === "ENOPRO") {
+            return undefined;
+        }
+        throw err;
+    }
+};
+`;
+
+if (!text.includes('__copilotSafeFileProbe__')) {
+    text = helper + text;
+}
+
+const statPattern = /([A-Za-z0-9_$.[\]]*fileService[A-Za-z0-9_$.[\]]*)\.stat\(\s*([^)]+?)\s*\)/g;
+const existsPattern = /([A-Za-z0-9_$.[\]]*fileService[A-Za-z0-9_$.[\]]*)\.exists\(\s*([^)]+?)\s*\)/g;
+
+let updated = text.replace(statPattern, '__copilotSafeFileProbe__($1, $2, "stat")');
+updated = updated.replace(existsPattern, '__copilotSafeFileProbe__($1, $2, "exists")');
+
+if (updated === text) {
+    process.exit(1);
+}
+
+fs.writeFileSync(path, updated);
+NODE
+        then
+            patched_any=true
+            bashio::log.notice "Patched Copilot terminal tool in ${file}"
+        else
+            bashio::log.debug "Skipped ${file} (no patchable file service probes found)"
+        fi
+    done
+done
+
+if ! ${patched_any}; then
+    bashio::log.warning "Copilot run_in_terminal patch could not find any targets. If Copilot Chat is installed later, restart the add-on to apply the patch."
+fi
