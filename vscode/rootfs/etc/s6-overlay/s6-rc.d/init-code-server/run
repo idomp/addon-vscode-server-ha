@@ -6,6 +6,7 @@
 # ==============================================================================
 declare config_path
 declare default_settings
+declare enable_patcher
 
 # List of previous config hashes, to allow upgrade "default" configs.
 readonly -a PREVIOUS_DEFAULT_CONFIG_HASHES=(
@@ -38,6 +39,11 @@ if bashio::config.has_value 'config_path'; then
             "the entire filesystem. Please use /config or another specific " \
             "directory instead."
     fi
+fi
+
+enable_patcher=false
+if bashio::config.true 'enable_patcher'; then
+    enable_patcher=true
 fi
 
 # Ensure persistent data folder exists.
@@ -97,17 +103,11 @@ else
     bashio::log.warning "VS Code binary not found; skipping extension installation"
 fi
 
-bashio::log.info "Patching Copilot run_in_terminal after extension installation"
-patch_args=()
-patch_strict="${PATCH_RUN_IN_TERMINAL_STRICT:-${PATCH_RUN_IN_TERMINAL_REQUIRE_MATCH:-false}}"
-if [[ "${patch_strict,,}" =~ ^(1|true|yes|on)$ ]]; then
-    patch_args+=(--require-match)
-fi
-
-if ! python3 /usr/local/bin/patch_run_in_terminal.py "${patch_args[@]}"; then
-    if [[ "${patch_strict,,}" =~ ^(1|true|yes|on)$ ]]; then
-        bashio::exit.nok "Failed to patch Copilot run_in_terminal (strict mode enabled)"
-    else
-        bashio::log.warning "run_in_terminal patch failed; continuing because strict mode is disabled"
+if [[ "${enable_patcher}" == true ]]; then
+    bashio::log.info "Patching Copilot run_in_terminal after extension installation"
+    if ! python3 /usr/local/bin/patch_run_in_terminal.py --require-match=false; then
+        bashio::log.warning "run_in_terminal patch failed; continuing without patch"
     fi
+else
+    bashio::log.info "Copilot run_in_terminal patcher disabled by configuration"
 fi

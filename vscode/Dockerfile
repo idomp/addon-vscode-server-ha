@@ -50,6 +50,7 @@ RUN \
         net-tools=2.10-1.3 \
         nmap=7.95+dfsg-3 \
         openssh-client=1:10.0p1-7 \
+        openssh-server=1:10.0p1-7 \
         openssl=3.5.4-1~deb13u1 \
         python3-dev=3.13.5-1 \
         python3-venv=3.13.5-1 \
@@ -89,6 +90,8 @@ RUN \
         --install /usr/bin/python python /usr/bin/python3 10 \
     \
     && pip3 install --no-cache-dir -r /tmp/requirements.txt \
+    \
+    && mkdir -p /run/sshd \
     \
     && apt-get purge -y --auto-remove \
         build-essential \
@@ -138,9 +141,8 @@ RUN set -o errexit -o nounset -o pipefail \
     && chmod +x /usr/local/bin/code \
     && rm -rf /opt/vscode-server-root
 
-# Patch Copilot run_in_terminal to avoid file-scheme provider requirements
+# Ship the Copilot run_in_terminal patcher (invoked conditionally at runtime)
 COPY scripts/patch_run_in_terminal.py /usr/local/bin/patch_run_in_terminal.py
-RUN python3 /usr/local/bin/patch_run_in_terminal.py --require-match=false
 
 # Copy root filesystem
 COPY rootfs /

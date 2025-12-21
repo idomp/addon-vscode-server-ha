@@ -1,0 +1,13 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# VS Code Server add-on: sshd long-running service.
+# ==============================================================================
+
+if ! bashio::config.true 'enable_ssh'; then
+    bashio::log.info "SSH access disabled; not starting sshd"
+    exit 0
+fi
+
+bashio::log.info "Starting sshd"
+exec /usr/sbin/sshd -D -e -f /etc/ssh/sshd_config
