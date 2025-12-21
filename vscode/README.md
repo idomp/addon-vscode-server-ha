@@ -8,6 +8,9 @@ marketplace, GitHub Copilot, and Copilot Chat from the Home Assistant frontend.
 ## Ports and ingress
 
 - Internal port: `8000`
+- Optional SSH port: `2222` (disabled by default; controlled by the
+  `enable_ssh` add-on option). You can remap the external port from the Home
+  Assistant add-on UI.
 - Home Assistant ingress is enabled by default.
 - You can optionally expose `8000/tcp` for direct access when running outside of
   ingress.
@@ -27,11 +30,32 @@ docker build \
 Replace `BUILD_FROM` with the Home Assistant base image for your architecture
 and, if desired, pin `VSCODE_SERVER_TAG` to a specific VS Code Server release.
 
+## Remote-SSH access from desktop VS Code
+
+1. In the add-on configuration, set `enable_ssh: true` and add at least one
+   entry under `ssh_authorized_keys` (your public key).
+2. Install the **Remote - SSH** extension in your desktop VS Code.
+3. Add an entry to your local `~/.ssh/config` that points at your Home
+   Assistant host and the port you mapped in the add-on UI (default: `2222`):
+
+   ```sshconfig
+   Host ha-vscode-addon
+     HostName <HOME_ASSISTANT_HOST_IP>
+     Port <EXTERNAL_PORT_FROM_ADDON_UI>
+     User root
+   ```
+
+4. Run `Remote-SSH: Connect to Host...` and choose `ha-vscode-addon` to open the
+   container in your desktop VS Code window.
+
+> Security note: prefer LAN-only access. Avoid exposing the SSH port directly to
+> the internet.
+
 ## Verifying the Copilot run_in_terminal patch
 
-The add-on patches the bundled VS Code assets on startup to keep Copilot's
-`run_in_terminal` tool working in the browser build. To confirm the patch is
-present:
+When `enable_patcher: true` (disabled by default), the add-on patches the
+bundled VS Code assets on startup to keep Copilot's `run_in_terminal` tool
+working in the browser build. To confirm the patch is present:
 
 1. Build the image (as shown above) and start a container shell:
 

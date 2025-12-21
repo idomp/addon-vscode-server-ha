@@ -1,6 +1,6 @@
 ---
 name: VS Code Server
-version: 0.4.3
+version: 0.5.0
 slug: vscode
 description: VS Code Server with Copilot support and the official marketplace in Home Assistant.
 url: https://github.com/idomp/addon-vscode-server-ha
@@ -15,8 +15,10 @@ arch:
   - amd64
 ports:
   8000/tcp: 8000
+  2222/tcp: 2222
 ports_description:
   8000/tcp: VS Code Server web UI
+  2222/tcp: SSH access to the VS Code add-on container (Remote-SSH)
 uart: true
 hassio_api: true
 hassio_role: manager
@@ -41,11 +43,24 @@ services:
   - mysql:want
   - mqtt:want
 options:
+  enable_ssh: false
+  ssh_port: 2222
+  ssh_authorized_keys: []
+  ssh_password_auth: false
+  ssh_password: null
+  enable_patcher: false
   packages: []
   init_commands: []
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)?
   config_path: str?
+  enable_ssh: bool
+  ssh_port: port
+  ssh_authorized_keys:
+    - str
+  ssh_password_auth: bool
+  ssh_password: "password?"
+  enable_patcher: bool
   packages:
     - str
   init_commands:

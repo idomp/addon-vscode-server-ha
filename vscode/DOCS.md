@@ -39,6 +39,12 @@ Example add-on configuration:
 ```yaml
 log_level: info
 config_path: /share/my_path
+enable_ssh: true
+ssh_port: 2222
+ssh_authorized_keys:
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyGoesHere user@laptop
+ssh_password_auth: false
+enable_patcher: false
 packages:
   - mariadb-client
 init_commands:
@@ -75,6 +81,25 @@ to `/root` then all the common folders of HA such as `/config`, `/ssl`,
 
 When not configured, the addon will automatically use the default: `/config`
 
+### Options: `enable_ssh`, `ssh_port`, `ssh_authorized_keys`, `ssh_password_auth`
+
+- `enable_ssh`: Starts the SSH server on container boot (default: `false`).
+- `ssh_port`: Internal SSH port (default: `2222`). You can remap the external
+  port in the add-on UI.
+- `ssh_authorized_keys`: List of public keys to grant access. Each entry becomes
+  a line in `/data/ssh/authorized_keys`.
+- `ssh_password_auth`: Set to `true` only if you want to allow password
+  authentication (default: `false`). Provide the password in `ssh_password`;
+  key-based auth is recommended.
+- Host keys persist in `/data/ssh/host_keys/` so the SSH fingerprint remains
+  stable across restarts.
+
+### Option: `enable_patcher`
+
+Controls whether the Copilot `run_in_terminal` patcher runs during startup.
+Defaults to `false`; when enabled, failures are logged as warnings so the
+add-on keeps running even if no assets are patched.
+
 ### Option: `packages`
 
 Allows you to specify additional [Ubuntu packages][ubuntu-packages] to be
@@ -88,6 +113,26 @@ time for the add-on._
 Customize your VSCode environment even more with the `init_commands` option.
 Add one or more shell commands to the list, and they will be executed every
 single time this add-on starts.
+
+## Remote-SSH from desktop VS Code
+
+1. In the add-on configuration, set `enable_ssh: true` and add your public key
+   under `ssh_authorized_keys`.
+2. (Optional) Change `ssh_port` if you need a different internal port. You can
+   still remap the external port from the add-on UI.
+3. On your desktop, install the **Remote - SSH** extension and add an entry to
+   `~/.ssh/config`:
+
+   ```sshconfig
+   Host ha-vscode-addon
+     HostName <HOME_ASSISTANT_HOST_IP>
+     Port <EXTERNAL_PORT_FROM_ADDON_NETWORK_TAB>
+     User root
+   ```
+
+4. Run `Remote-SSH: Connect to Host...` in VS Code and pick `ha-vscode-addon`.
+5. Keep SSH exposure limited to your LAN; avoid forwarding this port to the
+   internet.
 
 ## Resetting your VSCode settings to the add-on defaults
 

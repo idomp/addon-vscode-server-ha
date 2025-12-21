@@ -1,0 +1,95 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# VS Code Server add-on: Initialize OpenSSH when enabled.
+# ==============================================================================
+set -o errexit
+set -o nounset
+set -o pipefail
+
+SSH_DATA_DIR="/data/ssh"
+HOST_KEYS_DIR="${SSH_DATA_DIR}/host_keys"
+AUTH_KEYS_FILE="${SSH_DATA_DIR}/authorized_keys"
+SSHD_CONFIG="/etc/ssh/sshd_config"
+
+if ! bashio::config.true 'enable_ssh'; then
+    bashio::log.info "SSH access disabled; skipping sshd initialization"
+    exit 0
+fi
+
+ssh_port=$(bashio::config 'ssh_port')
+ssh_password_auth=false
+if bashio::config.true 'ssh_password_auth'; then
+    ssh_password_auth=true
+fi
+
+ssh_password=$(bashio::config 'ssh_password')
+[[ "${ssh_password}" == "null" ]] && ssh_password=""
+
+authorized_keys=""
+if authorized_keys=$(bashio::config 'ssh_authorized_keys|join("\n")'); then
+    authorized_keys="${authorized_keys//$'\r'/}"
+fi
+
+mkdir -p "${SSH_DATA_DIR}" "${HOST_KEYS_DIR}" /etc/ssh /etc/ssh/sshd_config.d /run/sshd
+chmod 755 /run/sshd
+
+# Persist authorized keys
+: > "${AUTH_KEYS_FILE}"
+if [[ -n "${authorized_keys}" ]]; then
+    printf '%s\n' "${authorized_keys}" >> "${AUTH_KEYS_FILE}"
+fi
+chmod 600 "${AUTH_KEYS_FILE}"
+chown root:root "${AUTH_KEYS_FILE}"
+
+# Generate or reuse host keys in /data and link into /etc/ssh.
+for key_type in rsa ed25519 ecdsa; do
+    key_file="${HOST_KEYS_DIR}/ssh_host_${key_type}_key"
+    pub_file="${key_file}.pub"
+    if ! bashio::fs.file_exists "${key_file}"; then
+        bashio::log.info "Generating SSH host key (${key_type})"
+        if [[ "${key_type}" == "rsa" ]]; then
+            ssh-keygen -t rsa -b 4096 -N '' -f "${key_file}" >/dev/null
+        else
+            ssh-keygen -t "${key_type}" -N '' -f "${key_file}" >/dev/null
+        fi
+    fi
+    ln -sf "${key_file}" "/etc/ssh/ssh_host_${key_type}_key"
+    ln -sf "${pub_file}" "/etc/ssh/ssh_host_${key_type}_key.pub"
+done
+
+# Configure password authentication if explicitly enabled
+password_auth_setting="no"
+permit_root_setting="prohibit-password"
+if [[ "${ssh_password_auth}" == true ]]; then
+    if [[ -z "${ssh_password}" ]]; then
+        bashio::log.warning "Password authentication requested but no ssh_password provided; falling back to key-only authentication"
+    else
+        password_auth_setting="yes"
+        permit_root_setting="yes"
+        echo "root:${ssh_password}" | chpasswd
+    fi
+fi
+
+cat > "${SSHD_CONFIG}" <<EOF
+Include /etc/ssh/sshd_config.d/*.conf
+Port ${ssh_port}
+ListenAddress 0.0.0.0
+Protocol 2
+
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+
+PermitRootLogin ${permit_root_setting}
+PasswordAuthentication ${password_auth_setting}
+PubkeyAuthentication yes
+AuthorizedKeysFile ${AUTH_KEYS_FILE}
+ChallengeResponseAuthentication no
+UsePAM no
+PrintMotd no
+X11Forwarding no
+Subsystem sftp internal-sftp
+EOF
+
+bashio::log.info "SSH access enabled on port ${ssh_port}"
