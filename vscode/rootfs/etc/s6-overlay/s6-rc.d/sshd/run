@@ -1,0 +1,20 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Home Assistant Community Add-on: VS Code Server
+# Runs the OpenSSH daemon when enabled.
+# ==============================================================================
+set -euo pipefail
+
+ENABLE_SSH=$(bashio::config 'enable_ssh')
+
+if [[ "${ENABLE_SSH,,}" != "true" ]]; then
+    bashio::log.info "SSH server disabled via configuration; not starting sshd"
+    exit 0
+fi
+
+if ! bashio::fs.file_exists '/etc/ssh/sshd_config'; then
+    bashio::exit.nok "sshd_config not found; SSH setup did not complete successfully"
+fi
+
+exec /usr/sbin/sshd -D -e -f /etc/ssh/sshd_config

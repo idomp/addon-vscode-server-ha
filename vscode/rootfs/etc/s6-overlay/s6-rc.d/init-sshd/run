@@ -1,0 +1,91 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Home Assistant Community Add-on: VS Code Server
+# Prepares the SSH server configuration and host keys when enabled.
+# ==============================================================================
+set -euo pipefail
+
+ENABLE_SSH=$(bashio::config 'enable_ssh')
+
+if [[ "${ENABLE_SSH,,}" != "true" ]]; then
+    bashio::log.info "SSH server disabled via configuration; skipping sshd setup"
+    exit 0
+fi
+
+SSH_PORT=$(bashio::config 'ssh_port')
+SSH_PASSWORD_AUTH=$(bashio::config 'ssh_password_auth')
+SSH_PASSWORD=""
+AUTHORIZED_KEYS_FILE="/data/ssh/authorized_keys"
+HOST_KEYS_DIR="/data/ssh/host_keys"
+
+mkdir -p /run/sshd /etc/ssh/sshd_config.d /data/ssh "${HOST_KEYS_DIR}"
+chmod 700 /data/ssh
+chmod 755 /run/sshd
+chown -R root:root /data/ssh
+
+# Authorized keys
+: > "${AUTHORIZED_KEYS_FILE}"
+if bashio::config.has_value 'ssh_authorized_keys'; then
+    bashio::config 'ssh_authorized_keys|join("\n")' >> "${AUTHORIZED_KEYS_FILE}" || true
+fi
+chmod 600 "${AUTHORIZED_KEYS_FILE}"
+
+# Host keys persisted in /data
+generate_host_key() {
+    local key_type=$1
+    local key_path="${HOST_KEYS_DIR}/ssh_host_${key_type}_key"
+
+    if ! bashio::fs.file_exists "${key_path}"; then
+        ssh-keygen -q -t "${key_type}" -N "" -f "${key_path}"
+    fi
+}
+
+generate_host_key rsa
+generate_host_key ed25519
+generate_host_key ecdsa
+
+for key in "${HOST_KEYS_DIR}"/ssh_host_*_key*; do
+    [ -e "${key}" ] || continue
+    ln -sf "${key}" "/etc/ssh/$(basename "${key}")"
+done
+
+# Password authentication
+password_auth="no"
+permit_root_login="prohibit-password"
+if [[ "${SSH_PASSWORD_AUTH,,}" == "true" ]]; then
+    if bashio::config.has_value 'ssh_password'; then
+        SSH_PASSWORD=$(bashio::config 'ssh_password')
+        echo "root:${SSH_PASSWORD}" | chpasswd
+        password_auth="yes"
+        permit_root_login="yes"
+    else
+        bashio::log.warning "SSH password authentication requested but no password set; disabling password auth"
+    fi
+fi
+
+if [[ "${password_auth}" == "no" ]] && [[ ! -s "${AUTHORIZED_KEYS_FILE}" ]]; then
+    bashio::log.warning "SSH is enabled without authorized keys and password authentication is disabled; logins will be rejected"
+fi
+
+cat > /etc/ssh/sshd_config <<EOF
+Port ${SSH_PORT}
+ListenAddress 0.0.0.0
+Protocol 2
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+PermitRootLogin ${permit_root_login}
+PasswordAuthentication ${password_auth}
+PubkeyAuthentication yes
+AuthorizedKeysFile ${AUTHORIZED_KEYS_FILE}
+ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
+UsePAM no
+PrintMotd no
+Subsystem sftp internal-sftp
+ClientAliveInterval 120
+ClientAliveCountMax 2
+EOF
+
+bashio::log.info "SSH server enabled on port ${SSH_PORT}"

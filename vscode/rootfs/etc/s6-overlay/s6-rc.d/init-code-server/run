@@ -97,17 +97,32 @@ else
     bashio::log.warning "VS Code binary not found; skipping extension installation"
 fi
 
-bashio::log.info "Patching Copilot run_in_terminal after extension installation"
-patch_args=()
-patch_strict="${PATCH_RUN_IN_TERMINAL_STRICT:-${PATCH_RUN_IN_TERMINAL_REQUIRE_MATCH:-false}}"
-if [[ "${patch_strict,,}" =~ ^(1|true|yes|on)$ ]]; then
-    patch_args+=(--require-match)
-fi
-
-if ! python3 /usr/local/bin/patch_run_in_terminal.py "${patch_args[@]}"; then
+enable_patcher=$(bashio::config 'enable_patcher')
+if [[ "${enable_patcher,,}" == "true" ]]; then
+    bashio::log.info "Patching Copilot run_in_terminal after extension installation"
+    patch_args=()
+    patch_strict="${PATCH_RUN_IN_TERMINAL_STRICT:-${PATCH_RUN_IN_TERMINAL_REQUIRE_MATCH:-false}}"
     if [[ "${patch_strict,,}" =~ ^(1|true|yes|on)$ ]]; then
-        bashio::exit.nok "Failed to patch Copilot run_in_terminal (strict mode enabled)"
-    else
-        bashio::log.warning "run_in_terminal patch failed; continuing because strict mode is disabled"
+        patch_args+=(--require-match)
     fi
+
+    patch_status=0
+    patch_output=""
+    if ! patch_output=$(python3 /usr/local/bin/patch_run_in_terminal.py "${patch_args[@]}" 2>&1); then
+        patch_status=$?
+    fi
+
+    if [[ -n "${patch_output}" ]]; then
+        while IFS= read -r line; do
+            bashio::log.info "${line}"
+        done <<< "${patch_output}"
+    fi
+
+    if (( patch_status != 0 )); then
+        bashio::log.warning "run_in_terminal patch failed (exit code ${patch_status}); continuing because the patcher is non-fatal"
+    elif [[ "${patch_output,,}" == *"no run_in_terminal occurrences"* ]]; then
+        bashio::log.warning "run_in_terminal patcher did not find any matching assets; no changes applied"
+    fi
+else
+    bashio::log.info "run_in_terminal patcher disabled via configuration; skipping patch"
 fi

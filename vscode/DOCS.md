@@ -43,6 +43,12 @@ packages:
   - mariadb-client
 init_commands:
   - ls -la
+enable_ssh: true
+ssh_port: 2222
+ssh_authorized_keys:
+  - "ssh-ed25519 AAAAB3NzaC1yc2EAAAADAQABAAACAQC7example user@example"
+ssh_password_auth: false
+enable_patcher: false
 ```
 
 **Note**: _This is just an example, don't copy and paste it! Create your own!_
@@ -88,6 +94,49 @@ time for the add-on._
 Customize your VSCode environment even more with the `init_commands` option.
 Add one or more shell commands to the list, and they will be executed every
 single time this add-on starts.
+
+### Option: `enable_ssh` (and related SSH settings)
+
+Set `enable_ssh: true` to start an OpenSSH server inside the add-on container.
+When enabled:
+
+- The daemon listens on the configured `ssh_port` (default `2222`).
+- Host keys are persisted under `/data/ssh/host_keys` to avoid trust prompts
+  across restarts.
+- Authorized keys are written to `/data/ssh/authorized_keys` from the
+  `ssh_authorized_keys` list.
+
+Key-based auth is the default and recommended approach. If you need password
+authentication, set `ssh_password_auth: true` and provide `ssh_password`; omit
+the password to keep password auth disabled.
+
+To connect from desktop VS Code using **Remote - SSH**:
+
+1. Enable SSH in the add-on options and add your public key to
+   `ssh_authorized_keys`.
+2. In the add-on Network tab, expose `2222/tcp` (or choose another external
+   port).
+3. On your workstation, add an entry to `~/.ssh/config`:
+
+   ```sshconfig
+   Host ha-vscode-addon
+     HostName <HOME_ASSISTANT_HOST_IP>
+     Port <EXTERNAL_PORT>
+     User root
+   ```
+
+4. In desktop VS Code, run **Remote-SSH: Connect to Host...** and choose
+   `ha-vscode-addon`.
+
+**Security note:** prefer LAN-only exposure; avoid forwarding the SSH port
+directly to the internet.
+
+### Option: `enable_patcher`
+
+Controls whether the runtime Copilot `run_in_terminal` patcher runs during
+startup. The default is `false` to keep startup fast and avoid unnecessary work
+on already patched assets. When set to `true`, the patcher runs but will only
+log warnings if it cannot apply changes (the add-on will keep running).
 
 ## Resetting your VSCode settings to the add-on defaults
 

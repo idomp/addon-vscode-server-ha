@@ -50,6 +50,7 @@ RUN \
         net-tools=2.10-1.3 \
         nmap=7.95+dfsg-3 \
         openssh-client=1:10.0p1-7 \
+        openssh-server=1:10.0p1-7 \
         openssl=3.5.4-1~deb13u1 \
         python3-dev=3.13.5-1 \
         python3-venv=3.13.5-1 \
@@ -84,6 +85,8 @@ RUN \
         ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting \
     \
     && sed -i -e "s#bin/bash#bin/zsh#" /etc/passwd \
+    \
+    && mkdir -p /run/sshd \
     \
     && update-alternatives \
         --install /usr/bin/python python /usr/bin/python3 10 \
