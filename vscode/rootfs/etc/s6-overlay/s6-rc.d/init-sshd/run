@@ -1,0 +1,76 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Home Assistant Add-on: VS Code Server
+# Prepares SSH daemon configuration and keys when enabled.
+# ==============================================================================
+set -o errexit
+set -o nounset
+set -o pipefail
+
+ENABLE_SSH="$(bashio::config 'enable_ssh')"
+
+if [[ "${ENABLE_SSH,,}" =~ ^(1|true|yes|on)$ ]]; then
+    bashio::log.info "SSH access enabled; configuring sshd"
+    rm -f /run/sshd.disabled || true
+else
+    bashio::log.info "SSH access disabled; skipping sshd setup"
+    touch /run/sshd.disabled
+    exit 0
+fi
+
+SSH_PORT="$(bashio::config 'ssh_port')"
+SSH_PASSWORD_AUTH="$(bashio::config 'ssh_password_auth')"
+SSH_PASSWORD="$(bashio::config 'ssh_password')"
+AUTH_KEYS_FILE="/data/ssh/authorized_keys"
+HOST_KEYS_DIR="/data/ssh/host_keys"
+
+mkdir -p /data/ssh "${HOST_KEYS_DIR}" /run/sshd
+chmod 700 /data/ssh "${HOST_KEYS_DIR}"
+
+# Persist authorized keys
+: > "${AUTH_KEYS_FILE}"
+if bashio::config.has_value 'ssh_authorized_keys'; then
+    bashio::config 'ssh_authorized_keys|join("\n")' >> "${AUTH_KEYS_FILE}" || true
+fi
+chmod 600 "${AUTH_KEYS_FILE}"
+
+# Generate host keys if missing
+if ! compgen -G "${HOST_KEYS_DIR}/ssh_host_*_key" > /dev/null; then
+    bashio::log.info "Generating SSH host keys"
+    ssh-keygen -t rsa -f "${HOST_KEYS_DIR}/ssh_host_rsa_key" -N '' -q
+    ssh-keygen -t ed25519 -f "${HOST_KEYS_DIR}/ssh_host_ed25519_key" -N '' -q
+fi
+
+# Link persisted host keys to system path
+for key in "${HOST_KEYS_DIR}"/ssh_host_*_key*; do
+    [ -e "${key}" ] || continue
+    ln -sf "${key}" "/etc/ssh/$(basename "${key}")"
+done
+
+cat > /etc/ssh/sshd_config <<EOF
+Port ${SSH_PORT}
+ListenAddress 0.0.0.0
+Protocol 2
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile /data/ssh/authorized_keys
+ChallengeResponseAuthentication no
+UsePAM no
+PrintMotd no
+Subsystem sftp internal-sftp
+EOF
+
+if [[ "${SSH_PASSWORD_AUTH,,}" =~ ^(1|true|yes|on)$ ]]; then
+    if [[ -n "${SSH_PASSWORD}" && "${SSH_PASSWORD}" != "null" ]]; then
+        bashio::log.info "Enabling SSH password authentication for root user"
+        echo "root:${SSH_PASSWORD}" | chpasswd
+        sed -i 's/^PasswordAuthentication .*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+        sed -i 's/^PermitRootLogin .*/PermitRootLogin yes/' /etc/ssh/sshd_config
+    else
+        bashio::log.warning "SSH password authentication requested but no password provided; keeping password auth disabled"
+    fi
+fi

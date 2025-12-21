@@ -43,6 +43,13 @@ packages:
   - mariadb-client
 init_commands:
   - ls -la
+enable_ssh: false
+ssh_port: 2222
+ssh_authorized_keys:
+  - "ssh-ed25519 AAAAC3Nza... user@example"
+ssh_password_auth: false
+ssh_password: null
+enable_patcher: false
 ```
 
 **Note**: _This is just an example, don't copy and paste it! Create your own!_
@@ -88,6 +95,29 @@ time for the add-on._
 Customize your VSCode environment even more with the `init_commands` option.
 Add one or more shell commands to the list, and they will be executed every
 single time this add-on starts.
+
+### SSH options
+
+Enable optional SSH access for the add-on container so you can connect via the
+desktop **Remote - SSH** extension.
+
+- `enable_ssh`: Set to `true` to start `sshd` (disabled by default).
+- `ssh_port`: Container port `sshd` listens on (default `2222`). You can remap
+  the host port in the add-on's **Network** settings.
+- `ssh_authorized_keys`: List of SSH public keys (one per entry). These are
+  written to `/data/ssh/authorized_keys`. Key-based auth is recommended.
+- `ssh_password_auth`: Set to `true` to allow password authentication.
+- `ssh_password`: Root password used when `ssh_password_auth` is enabled. Leave
+  `ssh_password_auth` disabled if you don't need password login.
+
+Host keys are stored in `/data/ssh/host_keys` so you won't see “host key
+changed” warnings after restarts.
+
+### Option: `enable_patcher`
+
+Controls whether the `run_in_terminal` patcher runs during startup. When set to
+`true`, the patcher runs but failures are non-fatal and only logged. Default is
+`false`.
 
 ## Resetting your VSCode settings to the add-on defaults
 

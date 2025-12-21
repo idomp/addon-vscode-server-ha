@@ -97,17 +97,18 @@ else
     bashio::log.warning "VS Code binary not found; skipping extension installation"
 fi
 
-bashio::log.info "Patching Copilot run_in_terminal after extension installation"
-patch_args=()
-patch_strict="${PATCH_RUN_IN_TERMINAL_STRICT:-${PATCH_RUN_IN_TERMINAL_REQUIRE_MATCH:-false}}"
-if [[ "${patch_strict,,}" =~ ^(1|true|yes|on)$ ]]; then
-    patch_args+=(--require-match)
-fi
-
-if ! python3 /usr/local/bin/patch_run_in_terminal.py "${patch_args[@]}"; then
+enable_patcher="$(bashio::config 'enable_patcher')"
+if [[ "${enable_patcher,,}" =~ ^(1|true|yes|on)$ ]]; then
+    bashio::log.info "Patching Copilot run_in_terminal after extension installation"
+    patch_args=()
+    patch_strict="${PATCH_RUN_IN_TERMINAL_STRICT:-${PATCH_RUN_IN_TERMINAL_REQUIRE_MATCH:-false}}"
     if [[ "${patch_strict,,}" =~ ^(1|true|yes|on)$ ]]; then
-        bashio::exit.nok "Failed to patch Copilot run_in_terminal (strict mode enabled)"
-    else
-        bashio::log.warning "run_in_terminal patch failed; continuing because strict mode is disabled"
+        patch_args+=(--require-match)
     fi
+
+    if ! python3 /usr/local/bin/patch_run_in_terminal.py "${patch_args[@]}"; then
+        bashio::log.warning "run_in_terminal patch failed; continuing because add-on patcher is non-fatal"
+    fi
+else
+    bashio::log.info "run_in_terminal patcher disabled via configuration"
 fi
