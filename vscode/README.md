@@ -8,9 +8,34 @@ marketplace, GitHub Copilot, and Copilot Chat from the Home Assistant frontend.
 ## Ports and ingress
 
 - Internal port: `8000`
+- Optional SSH port: `2222` (can be remapped in the add-on network UI)
 - Home Assistant ingress is enabled by default.
 - You can optionally expose `8000/tcp` for direct access when running outside of
   ingress.
+
+## Remote SSH access (for desktop VS Code)
+
+You can connect from a desktop VS Code using the **Remote - SSH** extension.
+
+1. Enable SSH in the add-on configuration by setting `enable_ssh: true`. Add
+   one or more SSH public keys to `ssh_authorized_keys` (recommended).
+2. Start the add-on and ensure the SSH port (`2222` by default) is exposed under
+   **Network**. You may change the host port number if desired.
+3. On your desktop, add an entry to `~/.ssh/config`:
+
+   ```sshconfig
+   Host ha-vscode-addon
+     HostName <HOME_ASSISTANT_HOST_IP>
+     Port <EXPOSED_PORT_IN_ADDON_UI>
+     User root
+   ```
+
+4. In desktop VS Code, run `Remote-SSH: Connect to Host...` and choose
+   `ha-vscode-addon`.
+
+Password authentication can be enabled with `ssh_password_auth: true` and
+`ssh_password`, but key-based authentication is preferred. Avoid exposing the
+port to the internet; keep it limited to your LAN.
 
 ## Building locally
 

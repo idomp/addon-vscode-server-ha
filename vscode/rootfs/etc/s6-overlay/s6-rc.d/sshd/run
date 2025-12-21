@@ -1,0 +1,12 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Home Assistant Add-on: VS Code Server
+# Runs SSH daemon when enabled.
+# ==============================================================================
+if [[ -f /run/sshd.disabled ]]; then
+    bashio::log.info "SSHD disabled; not starting sshd service"
+    exec sleep infinity
+fi
+
+exec /usr/sbin/sshd -D -e -f /etc/ssh/sshd_config

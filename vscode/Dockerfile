@@ -50,7 +50,9 @@ RUN \
         net-tools=2.10-1.3 \
         nmap=7.95+dfsg-3 \
         openssh-client=1:10.0p1-7 \
+        openssh-server=1:10.0p1-7 \
         openssl=3.5.4-1~deb13u1 \
+        procps=2:4.0.4-3 \
         python3-dev=3.13.5-1 \
         python3-venv=3.13.5-1 \
         python3=3.13.5-1 \
@@ -60,6 +62,8 @@ RUN \
         zip=3.0-15 \
         zsh=5.9-8+b14 \
         less=668-1 \
+    \
+    && mkdir -p /run/sshd /data/ssh \
     \
     && sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
     && locale-gen \
